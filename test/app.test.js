@@ -118,3 +118,17 @@ test('CSV export neutralises spreadsheet formulas', async (t) => {
   const res = await fetch(`${srv.base}/admin/p/${p.id}/export.csv`, { headers: { authorization: AUTH } });
   assert.match(await res.text(), /"'=HYPERLINK\(""x""\) Evil"/);
 });
+
+test('seed creates the initial petition once, never again after deletion', () => {
+  const path = require('node:path');
+  const { seedIfFresh } = require('../src/seed');
+  const db = openDatabase(':memory:');
+  const file = path.join(__dirname, '..', 'seed', 'petitionen.json');
+  const [p] = seedIfFresh(db, file);
+  assert.equal(p.slug, 'sitzplaetze-schulhof');
+  assert.match(p.title, /Werner-von-Siemens-Realschule/);
+  assert.equal(seedIfFresh(db, file).length, 0);
+  db.deletePetition(p.id);
+  assert.equal(seedIfFresh(db, file).length, 0);
+  db.close();
+});

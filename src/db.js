@@ -61,6 +61,7 @@ function openDatabase(file) {
     listSignatures: db.prepare(`
       SELECT * FROM signatures WHERE petition_id = ? ORDER BY created_at DESC, id DESC`),
     deleteSignature: db.prepare('DELETE FROM signatures WHERE id = ? AND petition_id = ?'),
+    everCreated: db.prepare("SELECT 1 FROM sqlite_sequence WHERE name = 'petitions'"),
   };
 
   return {
@@ -69,13 +70,15 @@ function openDatabase(file) {
       (onlyOpen ? stmt.listOpenPetitions : stmt.listPetitions).all(),
     getPetitionBySlug: (slug) => stmt.petitionBySlug.get(slug),
     getPetitionById: (id) => stmt.petitionById.get(id),
-    createPetition({ title, description, recipient, goal }) {
-      const base = slugify(title) || 'petition';
+    createPetition({ title, description, recipient, goal, slug: wanted }) {
+      const base = slugify(wanted || title) || 'petition';
       let slug = base;
       for (let i = 2; stmt.slugExists.get(slug); i++) slug = `${base}-${i}`;
       const info = stmt.insertPetition.run(slug, title, description, recipient, goal);
       return stmt.petitionById.get(info.lastInsertRowid);
     },
+    /** True once any petition was created – even if it was deleted later. */
+    hasEverCreatedPetitions: () => Boolean(stmt.everCreated.get()),
     setPetitionOpen: (id, open) => stmt.setOpen.run(open ? 1 : 0, id),
     deletePetition: (id) => stmt.deletePetition.run(id),
     /** Returns true if stored, false if this e-mail already signed the petition. */

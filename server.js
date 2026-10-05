@@ -1,6 +1,7 @@
 const path = require('node:path');
 const { openDatabase } = require('./src/db');
 const { createApp } = require('./src/app');
+const { seedIfFresh } = require('./src/seed');
 
 const port = Number(process.env.PORT) || 3000;
 const dbFile = process.env.DATABASE_FILE || path.join(__dirname, 'data', 'petition.sqlite');
@@ -11,6 +12,9 @@ if (!process.env.ADMIN_PASSWORD) {
 }
 
 const db = openDatabase(dbFile);
+for (const p of seedIfFresh(db, process.env.SEED_FILE || path.join(__dirname, 'seed', 'petitionen.json'))) {
+  console.log(`Petition angelegt: „${p.title}“ → /p/${p.slug}`);
+}
 const app = createApp({
   db,
   adminUser: process.env.ADMIN_USER || 'admin',

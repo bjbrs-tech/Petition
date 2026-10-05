@@ -55,9 +55,18 @@ docker run -p 3000:3000 -v petition-data:/data \
   petition
 ```
 
+## Vorbereitete Petition
+
+Beim allerersten Start wird automatisch die Petition
+**„Sitzmöglichkeiten auf dem Schulhof der Werner-von-Siemens-Realschule“** angelegt –
+erreichbar unter `/p/sitzplaetze-schulhof`. Titel, Empfänger, Zielzahl (300) und Text stehen in
+[`seed/petitionen.json`](seed/petitionen.json) und können dort vor dem ersten Start angepasst
+werden (danach in der Datenbank; eine gelöschte Petition wird nicht neu angelegt).
+Eine andere Datei lässt sich per `SEED_FILE` angeben.
+
 ## Ablauf
 
-1. In `/admin` eine Petition anlegen.
+1. In `/admin` eine Petition anlegen (oder die vorbereitete verwenden).
 2. „Aushang drucken“ oder den QR-Code als PNG herunterladen und auf Flyer/Plakate setzen.
 3. Teilnehmende scannen → Formular ausfüllen → „Unterschreiben“.
 4. Unterschriften in der Verwaltung einsehen und als CSV exportieren.
