@@ -9,7 +9,9 @@ meisten Handys füllt die Autofill-Funktion das komplette Formular mit einem Tip
 
 - **Öffentlich**
   - Übersicht aller offenen Petitionen mit Fortschrittsbalken
-  - Mobil optimiertes Unterschriftsformular (Name, Straße + Nr., PLZ, Ort, E-Mail, Einwilligung)
+  - Mobil optimiertes Unterschriftsformular (Name, Straße + Nr., PLZ, Ort, E-Mail, Einwilligung);
+    der Ort ist mit dem Ort der Petition vorbelegt, das Handy füllt den Rest per Autofill
+  - Nach dem Unterschreiben: „Weitere Person unterschreiben lassen“ – praktisch am Infostand
   - Doppelte Unterschriften (gleiche E-Mail pro Petition) werden nicht gezählt
   - Spamschutz per Honeypot-Feld und Rate-Limit (20 Absendungen/Minute pro IP)
 - **Verwaltung** (`/admin`, Passwortschutz per HTTP Basic Auth)
@@ -18,10 +20,22 @@ meisten Handys füllt die Autofill-Funktion das komplette Formular mit einem Tip
   - Druckfertiger **Aushang** mit großem QR-Code für Infostände und Plakate
   - Liste aller Unterschriften, einzelne Einträge löschen
   - **CSV-Export** (Excel-kompatibel, `;`-getrennt, UTF-8)
+  - Petition nachträglich bearbeiten (Text, Empfänger, Anschrift, Absender, Ziel) – der Link
+    und damit der QR-Code bleiben gleich
+- **Übergabe-Dokumente** (PDF, werden bei jedem Abruf aus dem aktuellen Stand erzeugt)
+  - **Zusammenfassung:** Empfänger-Anschrift, Absender, Datum, Kennzahlen (Anzahl,
+    davon aus dem Ort der Petition, Sammelzeitraum), Petitionstext, Auswertung nach Wohnort
+    und Postleitzahl
+  - **Detaillierte Unterschriftenliste:** nummeriert mit Name, Anschrift und Datum, Kopfzeile
+    auf jeder Seite, Seitenzahlen, Bestätigungsfeld mit Unterschriftszeile –
+    **ohne E-Mail-Adressen**
+  - Beides auch zusammen als ein Übergabe-Dokument
 
 ## Starten
 
 Voraussetzung: Node.js ≥ 22.13 (nutzt das eingebaute `node:sqlite`, kein Datenbankserver nötig).
+Die PDFs verwenden die mitgelieferte Schrift Liberation Sans (SIL Open Font License, siehe `fonts/`),
+damit auch Namen wie „Şahin“ oder „Łukasz“ korrekt gedruckt werden.
 
 ```bash
 npm install
@@ -59,9 +73,13 @@ docker run -p 3000:3000 -v petition-data:/data \
 
 Beim allerersten Start wird automatisch die Petition
 **„Sitzmöglichkeiten auf dem Schulhof der Werner-von-Siemens-Realschule“** angelegt –
-erreichbar unter `/p/sitzplaetze-schulhof`. Titel, Empfänger, Zielzahl (300) und Text stehen in
+erreichbar unter `/p/sitzplaetze-schulhof`, adressiert an den Oberbürgermeister der
+Landeshauptstadt Düsseldorf (Rathaus, Marktplatz 2, 40213 Düsseldorf). Titel, Empfänger,
+Anschrift, Zielzahl (300) und Text stehen in
 [`seed/petitionen.json`](seed/petitionen.json) und können dort vor dem ersten Start angepasst
-werden (danach in der Datenbank; eine gelöschte Petition wird nicht neu angelegt).
+werden; danach jederzeit in der Verwaltung unter „Petition bearbeiten“. Eine gelöschte
+Petition wird nicht neu angelegt. Bitte dort auch **„Eingereicht von“** ausfüllen (z. B. die SMV) –
+das erscheint als Absender und an der Unterschriftszeile.
 Eine andere Datei lässt sich per `SEED_FILE` angeben.
 
 ## Ablauf
@@ -70,6 +88,7 @@ Eine andere Datei lässt sich per `SEED_FILE` angeben.
 2. „Aushang drucken“ oder den QR-Code als PNG herunterladen und auf Flyer/Plakate setzen.
 3. Teilnehmende scannen → Formular ausfüllen → „Unterschreiben“.
 4. Unterschriften in der Verwaltung einsehen und als CSV exportieren.
+5. Zur Übergabe das **Übergabe-Dokument (PDF)** herunterladen, ausdrucken und unterschreiben.
 
 ## Datenschutz-Hinweise
 

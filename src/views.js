@@ -1,3 +1,5 @@
+const { formatDateTime, formatNumber, formatPercent } = require('./format');
+
 const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -47,11 +49,11 @@ function home(petitions) {
 }
 
 const FIELDS = [
-  { name: 'name', label: 'Vor- und Nachname', autocomplete: 'name', type: 'text', max: 120 },
-  { name: 'street', label: 'Straße und Hausnummer', autocomplete: 'street-address', type: 'text', max: 160 },
-  { name: 'postal_code', label: 'PLZ', autocomplete: 'postal-code', type: 'text', max: 10, inputmode: 'numeric', short: true },
-  { name: 'city', label: 'Ort', autocomplete: 'address-level2', type: 'text', max: 100 },
-  { name: 'email', label: 'E-Mail-Adresse', autocomplete: 'email', type: 'email', max: 254, inputmode: 'email' },
+  { name: 'name', label: 'Vor- und Nachname', autocomplete: 'name', type: 'text', max: 120, enter: 'next' },
+  { name: 'street', label: 'Straße und Hausnummer', autocomplete: 'address-line1', type: 'text', max: 160, enter: 'next' },
+  { name: 'postal_code', label: 'PLZ', autocomplete: 'postal-code', type: 'text', max: 10, inputmode: 'numeric', short: true, enter: 'next' },
+  { name: 'city', label: 'Ort', autocomplete: 'address-level2', type: 'text', max: 100, enter: 'next' },
+  { name: 'email', label: 'E-Mail-Adresse', autocomplete: 'email', type: 'email', max: 254, inputmode: 'email', enter: 'done' },
 ];
 
 function field(f, values, errors) {
@@ -59,17 +61,21 @@ function field(f, values, errors) {
   return `<div class="field${f.short ? ' short' : ''}">
         <label for="${f.name}">${f.label}</label>
         <input id="${f.name}" name="${f.name}" type="${f.type}" required maxlength="${f.max}"
-          autocomplete="${f.autocomplete}"${f.inputmode ? ` inputmode="${f.inputmode}"` : ''}
-          ${f.type === 'text' && f.name !== 'postal_code' ? 'autocapitalize="words"' : ''}
+          autocomplete="${f.autocomplete}" enterkeyhint="${f.enter}"${f.inputmode ? ` inputmode="${f.inputmode}"` : ''}
+          ${f.type === 'text' && f.name !== 'postal_code' ? 'autocapitalize="words"' : 'autocapitalize="off" spellcheck="false"'}
           value="${esc(values[f.name])}"${err ? ' aria-invalid="true"' : ''}>
         ${err ? `<p class="error">${esc(err)}</p>` : ''}
       </div>`;
 }
 
-function petition(p, { values = {}, errors = {} } = {}) {
+function petition(p, { values: given = {}, errors = {} } = {}) {
+  // Ort ist mit dem Ort der Petition vorbelegt – die meisten Unterzeichnenden wohnen dort.
+  const values = { ...given, city: given.city ?? p.default_city };
   const form = p.is_open
-    ? `<form method="post" action="/p/${esc(p.slug)}" class="sign-form" novalidate>
+    ? `<form method="post" action="/p/${esc(p.slug)}" class="sign-form" id="unterschreiben" novalidate>
       <h2>Jetzt unterschreiben</h2>
+      ${Object.keys(errors).length ? '' : `<p class="hint">Tipp: Ins erste Feld tippen – Ihr Handy schlägt Name,
+        Adresse und E-Mail meist automatisch vor.</p>`}
       ${errors._form ? `<p class="error banner">${esc(errors._form)}</p>` : ''}
       <div class="row">
       ${FIELDS.slice(0, 2).map((f) => field(f, values, errors)).join('')}
@@ -84,9 +90,9 @@ function petition(p, { values = {}, errors = {} } = {}) {
       </div>
       <label class="consent${errors.consent ? ' invalid' : ''}">
         <input type="checkbox" name="consent" value="1" required${values.consent ? ' checked' : ''}>
-        <span>Ich unterstütze diese Petition und bin einverstanden, dass meine Angaben
-        zu diesem Zweck gespeichert und ${p.recipient ? `an ${esc(p.recipient)}` : 'an die Empfänger der Petition'}
-        übergeben werden.</span>
+        <span>Ich unterstütze diese Petition. Mein Name und meine Anschrift dürfen dafür gespeichert und
+        ${p.recipient ? `an ${esc(p.recipient)}` : 'an die Empfänger der Petition'} übergeben werden.
+        Meine E-Mail-Adresse wird nicht weitergegeben.</span>
       </label>
       ${errors.consent ? `<p class="error">${esc(errors.consent)}</p>` : ''}
       <button type="submit" class="btn primary big">Unterschreiben</button>
@@ -98,9 +104,11 @@ function petition(p, { values = {}, errors = {} } = {}) {
     body: `<article class="petition">
       <h1>${esc(p.title)}</h1>
       ${p.recipient ? `<p class="muted">An: ${esc(p.recipient)}</p>` : ''}
+      ${p.description && p.is_open ? '<p><a href="#worum-geht-es">Worum geht es? ↓</a></p>' : ''}
       ${progress(p)}
       ${form}
-      ${p.description ? `<section class="description">${nl2p(p.description)}</section>` : ''}
+      ${p.description ? `<section class="description" id="worum-geht-es">
+        <h2>Worum geht es?</h2>${nl2p(p.description)}</section>` : ''}
     </article>`,
   });
 }
@@ -115,7 +123,8 @@ function thanks(p, { duplicate = false } = {}) {
         ? 'Mit dieser E-Mail-Adresse wurde diese Petition bereits unterzeichnet. Jede Stimme zählt einmal.'
         : `Ihre Unterschrift für „${esc(p.title)}“ wurde gespeichert.`}</p>
       ${progress(p)}
-      <p><a class="btn" href="/p/${esc(p.slug)}">Zur Petition</a></p>
+      ${p.is_open ? `<p><a class="btn primary big" href="/p/${esc(p.slug)}#unterschreiben">Weitere Person unterschreiben lassen</a></p>` : ''}
+      <p><a href="/p/${esc(p.slug)}#worum-geht-es">Zur Petition</a></p>
     </div>`,
   });
 }
@@ -148,34 +157,54 @@ function adminIndex(petitions, { errors = {}, values = {} } = {}) {
     <section class="card">
       <h2>Neue Petition</h2>
       <form method="post" action="/admin/petitions">
-        <div class="field">
-          <label for="title">Titel</label>
-          <input id="title" name="title" required maxlength="200" value="${esc(values.title)}">
-          ${errors.title ? `<p class="error">${esc(errors.title)}</p>` : ''}
-        </div>
-        <div class="field">
-          <label for="recipient">Empfänger (optional)</label>
-          <input id="recipient" name="recipient" maxlength="200" value="${esc(values.recipient)}"
-            placeholder="z.&nbsp;B. Gemeinderat Musterstadt">
-        </div>
-        <div class="field">
-          <label for="goal">Ziel – Anzahl Unterschriften (optional)</label>
-          <input id="goal" name="goal" type="number" min="0" max="10000000" value="${esc(values.goal)}">
-        </div>
-        <div class="field">
-          <label for="description">Beschreibung / Petitionstext</label>
-          <textarea id="description" name="description" rows="8" maxlength="20000">${esc(values.description)}</textarea>
-        </div>
+        ${petitionFields(values, errors)}
         <button class="btn primary" type="submit">Petition anlegen</button>
       </form>
     </section>`,
   });
 }
 
-function adminPetition(p, signatures, publicUrl, qrSvg) {
+function petitionFields(v, errors = {}) {
+  const input = (name, label, extra = '', hint = '') => `<div class="field">
+          <label for="${name}">${label}</label>
+          <input id="${name}" name="${name}" maxlength="200" value="${esc(v[name])}" ${extra}>
+          ${hint ? `<p class="muted small">${hint}</p>` : ''}
+          ${errors[name] ? `<p class="error">${esc(errors[name])}</p>` : ''}
+        </div>`;
+  return `${input('title', 'Titel', 'required')}
+        ${input('recipient', 'Empfänger', '', 'Erscheint im Formular und auf den Übergabe-Dokumenten.')}
+        <div class="field">
+          <label for="recipient_address">Anschrift des Empfängers</label>
+          <textarea id="recipient_address" name="recipient_address" rows="3" maxlength="500">${esc(v.recipient_address)}</textarea>
+        </div>
+        ${input('initiator', 'Eingereicht von', '', 'z.&nbsp;B. Schülervertretung (SMV) der Schule – erscheint als Absender.')}
+        ${input('default_city', 'Ort der Petition', '', 'Wird im Formular als Wohnort vorbelegt und in der Auswertung gezählt („davon aus …“).')}
+        <div class="field">
+          <label for="goal">Ziel – Anzahl Unterschriften</label>
+          <input id="goal" name="goal" type="number" min="0" max="10000000" value="${esc(v.goal)}">
+        </div>
+        <div class="field">
+          <label for="description">Petitionstext</label>
+          <textarea id="description" name="description" rows="10" maxlength="20000">${esc(v.description)}</textarea>
+        </div>`;
+}
+
+function statTiles(p, stats) {
+  const tiles = [
+    ['Unterschriften', formatNumber(stats.total)],
+    ...(stats.fromHome !== null
+      ? [[`davon aus ${stats.homeCity}`, `${formatNumber(stats.fromHome)} <small>(${formatPercent(stats.fromHome, stats.total)})</small>`]]
+      : []),
+    ['Sammelzeitraum', stats.total ? `${stats.first} – ${stats.last}` : '–'],
+  ];
+  return `<div class="tiles">${tiles.map(([label, value]) =>
+    `<div class="tile"><span class="muted">${esc(label)}</span><strong>${value}</strong></div>`).join('')}</div>`;
+}
+
+function adminPetition(p, signatures, publicUrl, qrSvg, stats, { values, errors = {} } = {}) {
   const rows = signatures.map((s) => `
         <tr>
-          <td>${esc(s.created_at)}</td>
+          <td>${esc(formatDateTime(s.created_at))}</td>
           <td>${esc(s.name)}</td>
           <td>${esc(s.street)}, ${esc(s.postal_code)} ${esc(s.city)}</td>
           <td>${esc(s.email)}</td>
@@ -206,6 +235,17 @@ function adminPetition(p, signatures, publicUrl, qrSvg) {
       </div>
     </section>
     <section class="card">
+      <h2>Übergabe${p.recipient ? ` an ${esc(p.recipient)}` : ''}</h2>
+      ${statTiles(p, stats)}
+      <p>Die Dokumente werden bei jedem Herunterladen automatisch aus dem aktuellen Stand erzeugt –
+      Name und Anschrift aller Unterzeichnenden, ohne E-Mail-Adressen.</p>
+      <div class="actions">
+        <a class="btn primary" href="/admin/p/${p.id}/uebergabe.pdf">Übergabe-Dokument (komplett)</a>
+        <a class="btn" href="/admin/p/${p.id}/zusammenfassung.pdf">Nur Zusammenfassung</a>
+        <a class="btn" href="/admin/p/${p.id}/unterschriftenliste.pdf">Nur detaillierte Liste</a>
+      </div>
+    </section>
+    <section class="card">
       <h2>Status</h2>
       ${progress(p)}
       <div class="actions">
@@ -222,9 +262,18 @@ function adminPetition(p, signatures, publicUrl, qrSvg) {
       <h2>Unterschriften (${signatures.length})</h2>
       <p><a class="btn" href="/admin/p/${p.id}/export.csv">Als CSV exportieren</a></p>
       ${signatures.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Datum (UTC)</th><th>Name</th><th>Anschrift</th><th>E-Mail</th><th></th></tr></thead>
+        <thead><tr><th>Datum</th><th>Name</th><th>Anschrift</th><th>E-Mail</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>` : '<p class="muted">Noch keine Unterschriften.</p>'}
+    </section>
+    <section class="card">
+      <details${Object.keys(errors).length ? ' open' : ''}>
+        <summary><h2>Petition bearbeiten</h2></summary>
+        <form method="post" action="/admin/p/${p.id}/edit">
+        ${petitionFields(values || p, errors)}
+        <button class="btn primary" type="submit">Speichern</button>
+        </form>
+      </details>
     </section>`,
   });
 }

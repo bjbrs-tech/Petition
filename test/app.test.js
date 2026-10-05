@@ -67,7 +67,7 @@ test('full flow: create petition, sign via QR link, export', async (t) => {
   // Public form uses autofill hints
   res = await fetch(`${srv.base}/p/mehr-baeume`);
   const page = await res.text();
-  for (const ac of ['name', 'street-address', 'postal-code', 'address-level2', 'email']) {
+  for (const ac of ['name', 'address-line1', 'postal-code', 'address-level2', 'email']) {
     assert.ok(page.includes(`autocomplete="${ac}"`), ac);
   }
 
@@ -131,4 +131,64 @@ test('seed creates the initial petition once, never again after deletion', () =>
   db.deletePetition(p.id);
   assert.equal(seedIfFresh(db, file).length, 0);
   db.close();
+});
+
+test('form is prefilled with the petition city, handover PDFs are generated', async (t) => {
+  const srv = await startServer();
+  t.after(srv.close);
+  const path = require('node:path');
+  const { seedIfFresh } = require('../src/seed');
+  const [p] = seedIfFresh(srv.db, path.join(__dirname, '..', 'seed', 'petitionen.json'));
+
+  const page = await (await fetch(`${srv.base}/p/${p.slug}`)).text();
+  assert.match(page, /id="city"[^>]*value="Düsseldorf"/s);
+  assert.match(page, /Oberbürgermeister der Landeshauptstadt Düsseldorf/);
+
+  srv.db.addSignature(p.id, { ...validSignature, email: 'a@example.org' });
+  srv.db.addSignature(p.id, { ...validSignature, name: 'Şükrü Łukasiewicz', city: 'Ratingen', email: 'b@example.org' });
+
+  for (const file of ['uebergabe', 'zusammenfassung', 'unterschriftenliste']) {
+    const res = await fetch(`${srv.base}/admin/p/${p.id}/${file}.pdf`, { headers: { authorization: AUTH } });
+    assert.equal(res.status, 200, file);
+    assert.equal(res.headers.get('content-type'), 'application/pdf');
+    const buf = Buffer.from(await res.arrayBuffer());
+    assert.equal(buf.subarray(0, 5).toString(), '%PDF-');
+  }
+
+  // Admin page shows key figures
+  const admin = await (await fetch(`${srv.base}/admin/p/${p.id}`, { headers: { authorization: AUTH } })).text();
+  assert.match(admin, /davon aus Düsseldorf/);
+});
+
+test('computeStats counts residents of the petition city', () => {
+  const { computeStats } = require('../src/handover');
+  const sigs = [
+    { city: 'Düsseldorf', postal_code: '40210', created_at: '2026-10-01 08:00:00' },
+    { city: 'duesseldorf', postal_code: '40210', created_at: '2026-10-02 08:00:00' },
+    { city: 'Düsseldorf-Bilk', postal_code: '40225', created_at: '2026-10-03 08:00:00' },
+    { city: 'Neuss', postal_code: '41460', created_at: '2026-10-04 23:30:00' },
+  ];
+  const stats = computeStats({ default_city: 'Düsseldorf' }, sigs);
+  assert.equal(stats.total, 4);
+  assert.equal(stats.fromHome, 3);
+  assert.equal(stats.first, '01.10.2026');
+  assert.equal(stats.last, '05.10.2026'); // 23:30 UTC = 01:30 Uhr deutscher Zeit
+  assert.deepEqual(stats.byCity[0], { label: 'Düsseldorf', count: 2 });
+  assert.deepEqual(stats.byPostalCode[0], { label: '40210', count: 2 });
+});
+
+test('admin can edit a petition', async (t) => {
+  const srv = await startServer();
+  t.after(srv.close);
+  const p = srv.db.createPetition({ title: 'Alt', goal: 0 });
+  const res = await post(`${srv.base}/admin/p/${p.id}/edit`, {
+    title: 'Neu', recipient: 'OB', recipient_address: 'Rathaus', initiator: 'SMV',
+    default_city: 'Düsseldorf', goal: '50', description: 'Text',
+  }, { authorization: AUTH, origin: srv.base });
+  assert.equal(res.status, 303);
+  const updated = srv.db.getPetitionById(p.id);
+  assert.equal(updated.title, 'Neu');
+  assert.equal(updated.initiator, 'SMV');
+  assert.equal(updated.goal, 50);
+  assert.equal(updated.slug, p.slug, 'Link (und damit QR-Code) bleibt gleich');
 });

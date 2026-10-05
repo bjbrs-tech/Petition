@@ -33,6 +33,12 @@ function openDatabase(file) {
     );
   `);
 
+  // Spalten, die nach der ersten Version hinzugekommen sind
+  const petitionColumns = new Set(db.prepare('PRAGMA table_info(petitions)').all().map((c) => c.name));
+  for (const col of ['recipient_address', 'initiator', 'default_city']) {
+    if (!petitionColumns.has(col)) db.exec(`ALTER TABLE petitions ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);
+  }
+
   const stmt = {
     listPetitions: db.prepare(`
       SELECT p.*, COUNT(s.id) AS signature_count
@@ -51,8 +57,12 @@ function openDatabase(file) {
       FROM petitions p WHERE p.id = ?`),
     slugExists: db.prepare('SELECT 1 FROM petitions WHERE slug = ?'),
     insertPetition: db.prepare(`
-      INSERT INTO petitions (slug, title, description, recipient, goal)
-      VALUES (?, ?, ?, ?, ?)`),
+      INSERT INTO petitions (slug, title, description, recipient, recipient_address, initiator, default_city, goal)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+    updatePetition: db.prepare(`
+      UPDATE petitions SET title = ?, description = ?, recipient = ?, recipient_address = ?,
+        initiator = ?, default_city = ?, goal = ?
+      WHERE id = ?`),
     setOpen: db.prepare('UPDATE petitions SET is_open = ? WHERE id = ?'),
     deletePetition: db.prepare('DELETE FROM petitions WHERE id = ?'),
     insertSignature: db.prepare(`
@@ -60,6 +70,8 @@ function openDatabase(file) {
       VALUES (?, ?, ?, ?, ?, ?)`),
     listSignatures: db.prepare(`
       SELECT * FROM signatures WHERE petition_id = ? ORDER BY created_at DESC, id DESC`),
+    listSignaturesChronological: db.prepare(`
+      SELECT * FROM signatures WHERE petition_id = ? ORDER BY created_at ASC, id ASC`),
     deleteSignature: db.prepare('DELETE FROM signatures WHERE id = ? AND petition_id = ?'),
     everCreated: db.prepare("SELECT 1 FROM sqlite_sequence WHERE name = 'petitions'"),
   };
@@ -70,13 +82,16 @@ function openDatabase(file) {
       (onlyOpen ? stmt.listOpenPetitions : stmt.listPetitions).all(),
     getPetitionBySlug: (slug) => stmt.petitionBySlug.get(slug),
     getPetitionById: (id) => stmt.petitionById.get(id),
-    createPetition({ title, description, recipient, goal, slug: wanted }) {
-      const base = slugify(wanted || title) || 'petition';
+    createPetition(p) {
+      const base = slugify(p.slug || p.title) || 'petition';
       let slug = base;
       for (let i = 2; stmt.slugExists.get(slug); i++) slug = `${base}-${i}`;
-      const info = stmt.insertPetition.run(slug, title, description, recipient, goal);
+      const info = stmt.insertPetition.run(slug, p.title, p.description ?? '', p.recipient ?? '',
+        p.recipient_address ?? '', p.initiator ?? '', p.default_city ?? '', p.goal ?? 0);
       return stmt.petitionById.get(info.lastInsertRowid);
     },
+    updatePetition: (id, p) => stmt.updatePetition.run(p.title, p.description, p.recipient,
+      p.recipient_address, p.initiator, p.default_city, p.goal, id),
     /** True once any petition was created – even if it was deleted later. */
     hasEverCreatedPetitions: () => Boolean(stmt.everCreated.get()),
     setPetitionOpen: (id, open) => stmt.setOpen.run(open ? 1 : 0, id),
@@ -91,7 +106,8 @@ function openDatabase(file) {
         throw err;
       }
     },
-    listSignatures: (petitionId) => stmt.listSignatures.all(petitionId),
+    listSignatures: (petitionId, { chronological = false } = {}) =>
+      (chronological ? stmt.listSignaturesChronological : stmt.listSignatures).all(petitionId),
     deleteSignature: (petitionId, id) => stmt.deleteSignature.run(id, petitionId),
     close: () => db.close(),
   };

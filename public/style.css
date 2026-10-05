@@ -135,6 +135,7 @@ body.poster { background: #fff; color: #000; }
 .poster-sheet .url { font-family: ui-monospace, monospace; word-break: break-all; color: #333; }
 
 @media (max-width: 600px) {
+  .petition h1 { font-size: 1.35rem; }
   .qr-card { flex-direction: column; }
   .qr { flex-basis: auto; width: 220px; }
 }
@@ -143,3 +144,19 @@ body.poster { background: #fff; color: #000; }
   .no-print { display: none; }
   .container { max-width: none; }
 }
+
+.hint { margin: -4px 0 14px; font-size: 0.9rem; color: var(--muted); }
+.small { font-size: 0.85rem; margin: 4px 0 0; }
+textarea { resize: vertical; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.tile { background: var(--bg); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+.tile strong { font-size: 1.35rem; }
+.tile small { font-size: 0.85rem; font-weight: 400; color: var(--muted); }
+
+details > summary { cursor: pointer; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary h2 { display: inline; }
+details > summary::after { content: " ▸"; color: var(--muted); }
+details[open] > summary::after { content: " ▾"; }
+details[open] > summary { margin-bottom: 12px; }

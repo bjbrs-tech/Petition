@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const QRCode = require('qrcode');
 const views = require('./views');
+const handover = require('./handover');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -26,6 +27,21 @@ function validateSignature(body) {
   if (values.city.length < 2) errors.city = 'Bitte den Ort angeben.';
   if (!EMAIL_RE.test(values.email)) errors.email = 'Bitte eine gültige E-Mail-Adresse angeben.';
   if (!values.consent) errors.consent = 'Bitte bestätigen Sie Ihre Zustimmung.';
+  return { values, errors };
+}
+
+function parsePetitionForm(body) {
+  const values = {
+    title: clean(body.title, 200),
+    recipient: clean(body.recipient, 200),
+    recipient_address: String(body.recipient_address ?? '').replace(/\r\n/g, '\n').trim().slice(0, 500),
+    initiator: clean(body.initiator, 200),
+    default_city: clean(body.default_city, 100),
+    goal: Math.max(0, Math.min(10_000_000, Number.parseInt(body.goal, 10) || 0)),
+    description: String(body.description ?? '').replace(/\r\n/g, '\n').trim().slice(0, 20000),
+  };
+  const errors = {};
+  if (values.title.length < 3) errors.title = 'Bitte einen Titel mit mindestens 3 Zeichen angeben.';
   return { values, errors };
 }
 
@@ -168,29 +184,51 @@ function createApp({ db, adminUser = 'admin', adminPassword, publicUrl, trustPro
   });
 
   admin.post('/petitions', (req, res) => {
-    const values = {
-      title: clean(req.body.title, 200),
-      recipient: clean(req.body.recipient, 200),
-      goal: req.body.goal ?? '',
-      description: String(req.body.description ?? '').replace(/\r\n/g, '\n').trim().slice(0, 20000),
-    };
-    if (values.title.length < 3) {
-      return res.status(422).send(views.adminIndex(db.listPetitions(), {
-        values, errors: { title: 'Bitte einen Titel mit mindestens 3 Zeichen angeben.' },
-      }));
+    const { values, errors } = parsePetitionForm(req.body);
+    if (Object.keys(errors).length) {
+      return res.status(422).send(views.adminIndex(db.listPetitions(), { values, errors }));
     }
-    const goal = Math.max(0, Math.min(10_000_000, Number.parseInt(values.goal, 10) || 0));
-    const p = db.createPetition({ ...values, goal });
+    const p = db.createPetition(values);
     res.redirect(303, `/admin/p/${p.id}`);
   });
 
+  const renderAdminPetition = async (req, res, form) => {
+    const p = req.petition;
+    const url = petitionUrl(req, p);
+    const svg = await QRCode.toString(url, { ...qrOptions, type: 'svg' });
+    const stats = handover.computeStats(p, db.listSignatures(p.id, { chronological: true }));
+    return views.adminPetition(p, db.listSignatures(p.id), url, svg, stats, form);
+  };
+
   admin.get('/p/:id', loadPetition, async (req, res, next) => {
     try {
-      const url = petitionUrl(req, req.petition);
-      const svg = await QRCode.toString(url, { ...qrOptions, type: 'svg' });
-      res.send(views.adminPetition(req.petition, db.listSignatures(req.petition.id), url, svg));
+      res.send(await renderAdminPetition(req, res));
     } catch (err) { next(err); }
   });
+
+  admin.post('/p/:id/edit', loadPetition, async (req, res, next) => {
+    try {
+      const { values, errors } = parsePetitionForm(req.body);
+      if (Object.keys(errors).length) {
+        return res.status(422).send(await renderAdminPetition(req, res, { values, errors }));
+      }
+      db.updatePetition(req.petition.id, values);
+      res.redirect(303, `/admin/p/${req.petition.id}`);
+    } catch (err) { next(err); }
+  });
+
+  const pdfRoute = (file, build) => admin.get(`/p/:id/${file}.pdf`, loadPetition, async (req, res, next) => {
+    try {
+      const p = req.petition;
+      const pdf = await build(p, db.listSignatures(p.id, { chronological: true }));
+      res.type('application/pdf');
+      res.attachment(`${file}-${p.slug}.pdf`);
+      res.send(pdf);
+    } catch (err) { next(err); }
+  });
+  pdfRoute('uebergabe', handover.handoverPdf);
+  pdfRoute('zusammenfassung', handover.summaryPdf);
+  pdfRoute('unterschriftenliste', handover.listPdf);
 
   admin.get('/p/:id/poster', loadPetition, async (req, res, next) => {
     try {
@@ -221,7 +259,7 @@ function createApp({ db, adminUser = 'admin', adminPassword, publicUrl, trustPro
       return `"${s.replace(/"/g, '""')}"`;
     };
     const header = ['Datum (UTC)', 'Name', 'Straße', 'PLZ', 'Ort', 'E-Mail'];
-    const lines = db.listSignatures(req.petition.id).reverse().map((s) =>
+    const lines = db.listSignatures(req.petition.id, { chronological: true }).map((s) =>
       [s.created_at, s.name, s.street, s.postal_code, s.city, s.email].map(cell).join(';'));
     res.type('text/csv; charset=utf-8');
     res.attachment(`unterschriften-${req.petition.slug}.csv`);
