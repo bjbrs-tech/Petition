@@ -1,0 +1,19 @@
+{
+  "name": "petition",
+  "version": "1.0.0",
+  "description": "Plattform für Petitionen – Unterschriften schnell per QR-Code sammeln",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4"
+  }
+}
