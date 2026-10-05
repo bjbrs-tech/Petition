@@ -11,6 +11,9 @@ meisten Handys füllt die Autofill-Funktion das komplette Formular mit einem Tip
   - Übersicht aller offenen Petitionen mit Fortschrittsbalken
   - Mobil optimiertes Unterschriftsformular (Name, Straße + Nr., PLZ, Ort, E-Mail, Einwilligung);
     der Ort ist mit dem Ort der Petition vorbelegt, das Handy füllt den Rest per Autofill
+  - **Altersabfrage** mit zwei Tasten („18 oder älter“ / „Unter 18“): Auch Kinder und Jugendliche
+    können unterschreiben; bei „Unter 18“ erscheint zusätzlich die Bestätigung, dass die Eltern bzw.
+    Erziehungsberechtigten einverstanden sind
   - Nach dem Unterschreiben: „Weitere Person unterschreiben lassen“ – praktisch am Infostand
   - Doppelte Unterschriften (gleiche E-Mail pro Petition) werden nicht gezählt
   - Spamschutz per Honeypot-Feld und Rate-Limit (20 Absendungen/Minute pro IP)
@@ -24,9 +27,11 @@ meisten Handys füllt die Autofill-Funktion das komplette Formular mit einem Tip
     und damit der QR-Code bleiben gleich
 - **Übergabe-Dokumente** (PDF, werden bei jedem Abruf aus dem aktuellen Stand erzeugt)
   - **Zusammenfassung:** Empfänger-Anschrift, Absender, Datum, Kennzahlen (Anzahl,
-    davon aus dem Ort der Petition, Sammelzeitraum), Petitionstext, Auswertung nach Wohnort
-    und Postleitzahl
-  - **Detaillierte Unterschriftenliste:** nummeriert mit Name, Anschrift und Datum, Kopfzeile
+    davon unter 18, davon aus dem Ort der Petition, Sammelzeitraum), Petitionstext, Auswertung
+    nach Altersgruppe, Wohnort und Postleitzahl
+  - **Detaillierte Unterschriftenliste:** nummeriert mit Name, Anschrift, Alter und Datum;
+    Minderjährige sind in der Spalte „Alter“ mit **„u18“** gekennzeichnet und farbig hinterlegt;
+    lange Namen werden umbrochen statt abgeschnitten; Kopfzeile
     auf jeder Seite, Seitenzahlen, Bestätigungsfeld mit Unterschriftszeile –
     **ohne E-Mail-Adressen**
   - Beides auch zusammen als ein Übergabe-Dokument
@@ -97,6 +102,8 @@ Es werden personenbezogene Daten verarbeitet. Vor dem Einsatz bitte
 - die Seite nur per **HTTPS** betreiben,
 - ein **Impressum** und eine **Datenschutzerklärung** ergänzen (Verantwortlicher, Zweck,
   Speicherdauer, Weitergabe an den Petitionsempfänger, Betroffenenrechte),
+- bei Minderjährigen beachten: Unter 16 Jahren ist für die Einwilligung die Zustimmung der
+  Eltern nötig (Art. 8 DSGVO); das Formular fragt sie für alle unter 18 ab,
 - die Daten nach Abschluss der Petition löschen („Petition löschen“ entfernt alle Unterschriften).
 
 ## Tests

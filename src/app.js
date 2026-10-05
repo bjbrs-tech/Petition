@@ -19,13 +19,21 @@ function validateSignature(body) {
     city: clean(body.city, 100),
     email: clean(body.email, 254).toLowerCase(),
     consent: body.consent === '1',
+    age: body.age === '18+' || body.age === 'u18' ? body.age : '',
+    parental_consent: body.parental_consent === '1',
   };
+  values.is_adult = values.age === '18+';
+  if (values.is_adult) values.parental_consent = false;
   const errors = {};
   if (values.name.length < 3 || !values.name.includes(' ')) errors.name = 'Bitte Vor- und Nachnamen angeben.';
   if (values.street.length < 3) errors.street = 'Bitte Straße und Hausnummer angeben.';
   if (!/^[0-9A-Za-z -]{4,10}$/.test(values.postal_code)) errors.postal_code = 'Bitte eine gültige PLZ angeben.';
   if (values.city.length < 2) errors.city = 'Bitte den Ort angeben.';
   if (!EMAIL_RE.test(values.email)) errors.email = 'Bitte eine gültige E-Mail-Adresse angeben.';
+  if (!values.age) errors.age = 'Bitte angeben, ob Sie 18 Jahre oder älter sind.';
+  if (values.age === 'u18' && !values.parental_consent) {
+    errors.parental_consent = 'Bitte bestätigen, dass deine Eltern einverstanden sind.';
+  }
   if (!values.consent) errors.consent = 'Bitte bestätigen Sie Ihre Zustimmung.';
   return { values, errors };
 }
@@ -258,9 +266,11 @@ function createApp({ db, adminUser = 'admin', adminPassword, publicUrl, trustPro
       if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; // Schutz vor Formel-Injection in Excel
       return `"${s.replace(/"/g, '""')}"`;
     };
-    const header = ['Datum (UTC)', 'Name', 'Straße', 'PLZ', 'Ort', 'E-Mail'];
+    const header = ['Datum (UTC)', 'Name', 'Straße', 'PLZ', 'Ort', 'E-Mail', 'Volljährig', 'Einverständnis Eltern'];
+    const yesNo = (v, applies = true) => (v === null || !applies ? '' : v ? 'ja' : 'nein');
     const lines = db.listSignatures(req.petition.id, { chronological: true }).map((s) =>
-      [s.created_at, s.name, s.street, s.postal_code, s.city, s.email].map(cell).join(';'));
+      [s.created_at, s.name, s.street, s.postal_code, s.city, s.email,
+        yesNo(s.is_adult), yesNo(s.parental_consent, s.is_adult === 0)].map(cell).join(';'));
     res.type('text/csv; charset=utf-8');
     res.attachment(`unterschriften-${req.petition.slug}.csv`);
     res.send(`﻿${[header.map(cell).join(';'), ...lines].join('\r\n')}\r\n`);

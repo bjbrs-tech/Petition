@@ -34,6 +34,7 @@ const validSignature = {
   city: 'Musterstadt',
   email: 'Erika@Example.org',
   consent: '1',
+  age: '18+',
 };
 
 test('slugify handles umlauts', () => {
@@ -166,11 +167,13 @@ test('computeStats counts residents of the petition city', () => {
     { city: 'Düsseldorf', postal_code: '40210', created_at: '2026-10-01 08:00:00' },
     { city: 'duesseldorf', postal_code: '40210', created_at: '2026-10-02 08:00:00' },
     { city: 'Düsseldorf-Bilk', postal_code: '40225', created_at: '2026-10-03 08:00:00' },
-    { city: 'Neuss', postal_code: '41460', created_at: '2026-10-04 23:30:00' },
+    { city: 'Neuss', postal_code: '41460', created_at: '2026-10-04 23:30:00', is_adult: 0 },
   ];
   const stats = computeStats({ default_city: 'Düsseldorf' }, sigs);
   assert.equal(stats.total, 4);
   assert.equal(stats.fromHome, 3);
+  assert.equal(stats.minors, 1);
+  assert.equal(stats.unknownAge, 3);
   assert.equal(stats.first, '01.10.2026');
   assert.equal(stats.last, '05.10.2026'); // 23:30 UTC = 01:30 Uhr deutscher Zeit
   assert.deepEqual(stats.byCity[0], { label: 'Düsseldorf', count: 2 });
@@ -191,4 +194,46 @@ test('admin can edit a petition', async (t) => {
   assert.equal(updated.initiator, 'SMV');
   assert.equal(updated.goal, 50);
   assert.equal(updated.slug, p.slug, 'Link (und damit QR-Code) bleibt gleich');
+});
+
+test('minors can sign with parental consent and are marked', async (t) => {
+  const srv = await startServer();
+  t.after(srv.close);
+  const p = srv.db.createPetition({ title: 'Schulhof', goal: 0 });
+  const url = `${srv.base}/p/${p.slug}`;
+
+  // Alter muss angegeben werden
+  let res = await post(url, { ...validSignature, age: '' });
+  assert.equal(res.status, 422);
+  assert.match(await res.text(), /18 Jahre oder älter sind/);
+
+  // Unter 18 ohne Einverständnis der Eltern wird abgelehnt
+  res = await post(url, { ...validSignature, age: 'u18' });
+  assert.equal(res.status, 422);
+  assert.match(await res.text(), /Eltern einverstanden/);
+
+  // Unter 18 mit Einverständnis klappt
+  res = await post(url, { ...validSignature, name: 'Tim Klein', email: 'tim@example.org', age: 'u18', parental_consent: '1' });
+  assert.equal(res.status, 303);
+  // Volljährige: ein versehentlich mitgeschicktes Eltern-Häkchen wird nicht gespeichert
+  res = await post(url, { ...validSignature, parental_consent: '1' });
+  assert.equal(res.status, 303);
+
+  const [adult, minor] = srv.db.listSignatures(p.id, { chronological: true }).sort((a, b) => a.is_adult - b.is_adult).reverse();
+  assert.equal(minor.is_adult, 0);
+  assert.equal(minor.parental_consent, 1);
+  assert.equal(adult.is_adult, 1);
+  assert.equal(adult.parental_consent, 0);
+
+  const admin = await (await fetch(`${srv.base}/admin/p/${p.id}`, { headers: { authorization: AUTH } })).text();
+  assert.match(admin, /Tim Klein <span class="tag minor">unter 18<\/span>/);
+  assert.match(admin, /davon unter 18/);
+
+  const csv = await (await fetch(`${srv.base}/admin/p/${p.id}/export.csv`, { headers: { authorization: AUTH } })).text();
+  assert.match(csv, /"Volljährig";"Einverständnis Eltern"/);
+  assert.match(csv, /"Tim Klein";.*"nein";"ja"/);
+  assert.match(csv, /"Erika Mustermann";.*"ja";""/);
+
+  const pdf = await fetch(`${srv.base}/admin/p/${p.id}/uebergabe.pdf`, { headers: { authorization: AUTH } });
+  assert.equal(pdf.status, 200);
 });

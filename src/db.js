@@ -38,6 +38,12 @@ function openDatabase(file) {
   for (const col of ['recipient_address', 'initiator', 'default_city']) {
     if (!petitionColumns.has(col)) db.exec(`ALTER TABLE petitions ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);
   }
+  // is_adult: 1 = 18 oder älter, 0 = minderjährig, NULL = nicht abgefragt (ältere Einträge)
+  const signatureColumns = new Set(db.prepare('PRAGMA table_info(signatures)').all().map((c) => c.name));
+  if (!signatureColumns.has('is_adult')) db.exec('ALTER TABLE signatures ADD COLUMN is_adult INTEGER');
+  if (!signatureColumns.has('parental_consent')) {
+    db.exec('ALTER TABLE signatures ADD COLUMN parental_consent INTEGER NOT NULL DEFAULT 0');
+  }
 
   const stmt = {
     listPetitions: db.prepare(`
@@ -66,8 +72,8 @@ function openDatabase(file) {
     setOpen: db.prepare('UPDATE petitions SET is_open = ? WHERE id = ?'),
     deletePetition: db.prepare('DELETE FROM petitions WHERE id = ?'),
     insertSignature: db.prepare(`
-      INSERT INTO signatures (petition_id, name, street, postal_code, city, email)
-      VALUES (?, ?, ?, ?, ?, ?)`),
+      INSERT INTO signatures (petition_id, name, street, postal_code, city, email, is_adult, parental_consent)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
     listSignatures: db.prepare(`
       SELECT * FROM signatures WHERE petition_id = ? ORDER BY created_at DESC, id DESC`),
     listSignaturesChronological: db.prepare(`
@@ -99,7 +105,9 @@ function openDatabase(file) {
     /** Returns true if stored, false if this e-mail already signed the petition. */
     addSignature(petitionId, s) {
       try {
-        stmt.insertSignature.run(petitionId, s.name, s.street, s.postal_code, s.city, s.email);
+        const isAdult = s.is_adult === undefined || s.is_adult === null ? null : (s.is_adult ? 1 : 0);
+        stmt.insertSignature.run(petitionId, s.name, s.street, s.postal_code, s.city, s.email,
+          isAdult, s.parental_consent ? 1 : 0);
         return true;
       } catch (err) {
         if (/UNIQUE constraint failed/.test(err.message)) return false;

@@ -88,6 +88,24 @@ function petition(p, { values: given = {}, errors = {} } = {}) {
         <label for="website">Website</label>
         <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
       </div>
+      <fieldset class="age${errors.age ? ' invalid' : ''}">
+        <legend>Alter</legend>
+        <div class="segmented">
+          <label><input type="radio" name="age" value="18+" required${values.age === '18+' ? ' checked' : ''}>
+            <span>18 oder älter</span></label>
+          <label><input type="radio" name="age" value="u18" id="age-u18"${values.age === 'u18' ? ' checked' : ''}>
+            <span>Unter 18</span></label>
+        </div>
+        ${errors.age ? `<p class="error">${esc(errors.age)}</p>` : ''}
+        <div class="minor-only">
+          <label class="consent${errors.parental_consent ? ' invalid' : ''}">
+            <input type="checkbox" name="parental_consent" value="1"${values.parental_consent ? ' checked' : ''}>
+            <span>Meine Eltern bzw. Erziehungsberechtigten sind einverstanden, dass ich unterschreibe.
+            Unterschriften von Minderjährigen werden in der Liste gekennzeichnet.</span>
+          </label>
+          ${errors.parental_consent ? `<p class="error">${esc(errors.parental_consent)}</p>` : ''}
+        </div>
+      </fieldset>
       <label class="consent${errors.consent ? ' invalid' : ''}">
         <input type="checkbox" name="consent" value="1" required${values.consent ? ' checked' : ''}>
         <span>Ich unterstütze diese Petition. Mein Name und meine Anschrift dürfen dafür gespeichert und
@@ -195,6 +213,7 @@ function statTiles(p, stats) {
     ...(stats.fromHome !== null
       ? [[`davon aus ${stats.homeCity}`, `${formatNumber(stats.fromHome)} <small>(${formatPercent(stats.fromHome, stats.total)})</small>`]]
       : []),
+    ['davon unter 18', `${formatNumber(stats.minors)} <small>(${formatPercent(stats.minors, stats.total)})</small>`],
     ['Sammelzeitraum', stats.total ? `${stats.first} – ${stats.last}` : '–'],
   ];
   return `<div class="tiles">${tiles.map(([label, value]) =>
@@ -205,7 +224,7 @@ function adminPetition(p, signatures, publicUrl, qrSvg, stats, { values, errors 
   const rows = signatures.map((s) => `
         <tr>
           <td>${esc(formatDateTime(s.created_at))}</td>
-          <td>${esc(s.name)}</td>
+          <td>${esc(s.name)}${s.is_adult === 0 ? ' <span class="tag minor">unter 18</span>' : ''}</td>
           <td>${esc(s.street)}, ${esc(s.postal_code)} ${esc(s.city)}</td>
           <td>${esc(s.email)}</td>
           <td>

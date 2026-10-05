@@ -160,3 +160,21 @@ details > summary h2 { display: inline; }
 details > summary::after { content: " ▸"; color: var(--muted); }
 details[open] > summary::after { content: " ▾"; }
 details[open] > summary { margin-bottom: 12px; }
+
+fieldset.age { border: 0; padding: 0; margin: 0 0 8px; min-width: 0; }
+fieldset.age legend { font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; padding: 0; }
+.segmented { display: flex; gap: 8px; }
+.segmented label { flex: 1; margin: 0; font-weight: 600; display: flex; }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented span {
+  flex: 1; text-align: center; padding: 12px 8px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg); cursor: pointer;
+}
+.segmented input:checked + span { background: var(--primary); border-color: var(--primary); color: #fff; }
+.segmented input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); }
+fieldset.age.invalid .segmented span { border-color: var(--danger); }
+.minor-only { margin-top: 10px; }
+/* Nur einblenden, wenn „Unter 18“ gewählt ist (ältere Browser zeigen es immer an) */
+fieldset.age:not(:has(#age-u18:checked)) .minor-only { display: none; }
+.tag.minor { color: #8a4b00; border-color: #c77c1e; }
+@media (prefers-color-scheme: dark) { .tag.minor { color: #f0b264; border-color: #f0b264; } }

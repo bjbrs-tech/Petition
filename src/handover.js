@@ -7,7 +7,11 @@ const PDFDocument = require('pdfkit');
 const { formatDate, today, formatNumber, formatPercent } = require('./format');
 
 const FONT_DIR = path.join(__dirname, '..', 'fonts');
-const COLORS = { text: '#1c2330', muted: '#5b6577', line: '#c9ced8', zebra: '#f2f4f7', accent: '#1f6f4a' };
+const COLORS = {
+  text: '#1c2330', muted: '#5b6577', line: '#c9ced8', zebra: '#f2f4f7', accent: '#1f6f4a',
+  minor: '#9a5200', minorBg: '#fdf0dc',
+};
+const MINOR_MARK = 'u18';
 const MARGIN = 50;
 
 // ---------- Auswertung ----------
@@ -37,8 +41,13 @@ function computeStats(petition, signatures) {
   const fromHome = home
     ? signatures.filter((s) => normalizePlace(s.city).startsWith(home)).length
     : null;
+  const minors = signatures.filter((s) => s.is_adult === 0).length;
+  const unknownAge = signatures.filter((s) => s.is_adult === null || s.is_adult === undefined).length;
   return {
     total,
+    minors,
+    adults: total - minors - unknownAge,
+    unknownAge,
     fromHome,
     homeCity: petition.default_city || '',
     first: total ? formatDate(signatures[0].created_at) : null,
@@ -144,7 +153,7 @@ function drawSummary(doc, petition, stats) {
 
   // Kennzahlen
   const boxes = [
-    ['Unterschriften', formatNumber(stats.total)],
+    ['Unterschriften', formatNumber(stats.total), `davon ${formatNumber(stats.minors)} unter 18 Jahren`],
     stats.fromHome !== null
       ? [`davon aus ${stats.homeCity}`, `${formatNumber(stats.fromHome)} (${formatPercent(stats.fromHome, stats.total)})`]
       : ['Verschiedene Orte', formatNumber(stats.byCity.length)],
@@ -153,15 +162,17 @@ function drawSummary(doc, petition, stats) {
   const gap = 10;
   const boxW = (width - gap * 2) / 3;
   const boxY = doc.y + 16;
-  boxes.forEach(([label, value], i) => {
+  const boxH = 64;
+  boxes.forEach(([label, value, sub], i) => {
     const x = left + i * (boxW + gap);
-    doc.roundedRect(x, boxY, boxW, 58, 6).fillColor(COLORS.zebra).fill();
+    doc.roundedRect(x, boxY, boxW, boxH, 6).fillColor(COLORS.zebra).fill();
     doc.font('R').fontSize(9).fillColor(COLORS.muted).text(label, x + 10, boxY + 10, { width: boxW - 20 });
     doc.font('B').fontSize(i === 2 ? 11.5 : 17).fillColor(COLORS.text)
       .text(value, x + 10, boxY + (i === 2 ? 30 : 26), { width: boxW - 20 });
+    if (sub) doc.font('R').fontSize(8.5).fillColor(COLORS.muted).text(sub, x + 10, boxY + 47, { width: boxW - 20 });
   });
   doc.x = left;
-  doc.y = boxY + 58;
+  doc.y = boxY + boxH;
 
   if (petition.description) {
     heading(doc, 'Anliegen');
@@ -189,6 +200,11 @@ function drawSummary(doc, petition, stats) {
     row([firstCol, 'Anzahl', 'Anteil'], true, false);
     top.forEach((r, i) => row([r.label, formatNumber(r.count), formatPercent(r.count, stats.total)], false, i % 2 === 0));
   };
+  table('Altersgruppen', [
+    { label: '18 Jahre oder älter', count: stats.adults },
+    { label: `Unter 18 Jahren (in der Liste mit „${MINOR_MARK}“ gekennzeichnet)`, count: stats.minors },
+    ...(stats.unknownAge ? [{ label: 'Ohne Altersangabe', count: stats.unknownAge }] : []),
+  ], 'Alter');
   table('Wohnorte der Unterzeichnenden', stats.byCity, 'Ort');
   table('Häufigste Postleitzahlen', stats.byPostalCode, 'PLZ');
 
@@ -199,19 +215,29 @@ function drawSummary(doc, petition, stats) {
       + 'Jede E-Mail-Adresse konnte die Petition nur einmal unterzeichnen; Mehrfachunterschriften sind dadurch ausgeschlossen.',
     'Alle Unterzeichnenden haben der Weitergabe von Name und Anschrift an den Empfänger der Petition zugestimmt. '
       + 'E-Mail-Adressen werden aus Datenschutzgründen nicht weitergegeben.',
+    `Auch Minderjährige konnten unterzeichnen. Sie haben angegeben, unter 18 Jahre alt zu sein, und bestätigt, `
+      + `dass ihre Erziehungsberechtigten einverstanden sind. In der Unterschriftenliste sind sie in der Spalte `
+      + `„Alter“ mit „${MINOR_MARK}“ gekennzeichnet und farbig hinterlegt.`,
   ], width);
 }
 
 // ---------- Detaillierte Liste ----------
 
 const LIST_COLS = [
-  { key: 'nr', label: 'Nr.', width: 34, align: 'right' },
-  { key: 'name', label: 'Name', width: 130 },
-  { key: 'street', label: 'Straße, Hausnummer', width: 135 },
-  { key: 'postal_code', label: 'PLZ', width: 42 },
-  { key: 'city', label: 'Ort', width: 92 },
-  { key: 'date', label: 'Datum', width: 62 },
+  { key: 'nr', label: 'Nr.', width: 32, align: 'right' },
+  { key: 'name', label: 'Name', width: 125 },
+  { key: 'street', label: 'Straße, Hausnummer', width: 125 },
+  { key: 'postal_code', label: 'PLZ', width: 40 },
+  { key: 'city', label: 'Ort', width: 86 },
+  { key: 'age', label: 'Alter', width: 36, align: 'center' },
+  { key: 'date', label: 'Datum', width: 60 },
 ];
+
+const ageLabel = (s) => {
+  if (s.is_adult === 0) return MINOR_MARK;
+  if (s.is_adult === 1) return '18+';
+  return '–';
+};
 
 function drawList(doc, petition, signatures) {
   const left = doc.page.margins.left;
@@ -226,6 +252,7 @@ function drawList(doc, petition, signatures) {
     doc.font('B').fontSize(12).fillColor(COLORS.text).text(petition.title, { width });
     doc.font('R').fontSize(9).fillColor(COLORS.muted)
       .text(`${petition.recipient ? `An: ${petition.recipient} · ` : ''}Stand: ${today()} · ${formatNumber(signatures.length)} Unterschriften`);
+    doc.text(`Alter: 18+ = volljährig · ${MINOR_MARK} = minderjährig (unter 18 Jahre, Einverständnis der Erziehungsberechtigten bestätigt)`);
     doc.moveDown(0.6);
     const y = doc.y;
     doc.rect(left, y, width, rowH + 2).fillColor(COLORS.accent).fill();
@@ -242,20 +269,24 @@ function drawList(doc, petition, signatures) {
   pageHeader();
   doc.font('R').fontSize(9);
   signatures.forEach((s, i) => {
-    ensureSpace(doc, rowH, pageHeader);
+    const minor = s.is_adult === 0;
+    const cells = { ...s, nr: String(i + 1), age: ageLabel(s), date: formatDate(s.created_at) };
+    // Lange Namen/Orte werden umbrochen statt abgeschnitten – die Liste muss vollständig sein.
+    doc.font('R').fontSize(9);
+    const h = Math.max(rowH, ...cols.map((c) => doc.heightOfString(String(cells[c.key] ?? ''), { width: c.width - 8 }) + 7));
+    ensureSpace(doc, h, pageHeader);
     const y = doc.y;
-    if (i % 2 === 1) doc.rect(left, y, width, rowH).fillColor(COLORS.zebra).fill();
-    const cells = { ...s, nr: String(i + 1), date: formatDate(s.created_at) };
+    if (minor) doc.rect(left, y, width, h).fillColor(COLORS.minorBg).fill();
+    else if (i % 2 === 1) doc.rect(left, y, width, h).fillColor(COLORS.zebra).fill();
     let x = left;
-    doc.font('R').fontSize(9).fillColor(COLORS.text);
     for (const c of cols) {
-      doc.text(fit(doc, cells[c.key], c.width - 8), x + 4, y + 4, {
-        width: c.width - 8, align: c.align || 'left', lineBreak: false,
-      });
+      const marked = c.key === 'age' && minor;
+      doc.font(marked ? 'B' : 'R').fontSize(9).fillColor(marked ? COLORS.minor : COLORS.text);
+      doc.text(String(cells[c.key] ?? ''), x + 4, y + 4, { width: c.width - 8, align: c.align || 'left' });
       x += c.width;
     }
     doc.x = left;
-    doc.y = y + rowH;
+    doc.y = y + h;
   });
   if (!signatures.length) {
     doc.moveDown().font('R').fontSize(10).fillColor(COLORS.muted).text('Noch keine Unterschriften vorhanden.', left);
@@ -265,6 +296,10 @@ function drawList(doc, petition, signatures) {
   ensureSpace(doc, 120, pageHeader);
   doc.moveDown(1.2).font('B').fontSize(10.5).fillColor(COLORS.text)
     .text(`Gesamt: ${formatNumber(signatures.length)} Unterschriften`, left);
+  const minors = signatures.filter((s) => s.is_adult === 0).length;
+  const unknown = signatures.filter((s) => s.is_adult === null || s.is_adult === undefined).length;
+  doc.font('R').fontSize(10).text(`davon ${formatNumber(signatures.length - minors - unknown)} volljährig und `
+    + `${formatNumber(minors)} minderjährig (${MINOR_MARK})${unknown ? `, ${formatNumber(unknown)} ohne Altersangabe` : ''}`, left);
   doc.moveDown(0.4).font('R').fontSize(10)
     .text('Die Vollständigkeit und Richtigkeit dieser Liste wird bestätigt.', left);
   const lineY = doc.y + 50;
