@@ -77,7 +77,7 @@ docker run -p 3000:3000 -v petition-data:/data \
 ## Vorbereitete Petition
 
 Beim allerersten Start wird automatisch die Petition
-**„Sitzmöglichkeiten auf dem Schulhof der Werner-von-Siemens-Realschule“** angelegt –
+**„Mehr Sitzmöglichkeiten auf dem Schulhof der Werner-von-Siemens-Realschule“** angelegt –
 erreichbar unter `/p/sitzplaetze-schulhof`, adressiert an den Oberbürgermeister der
 Landeshauptstadt Düsseldorf (Rathaus, Marktplatz 2, 40213 Düsseldorf). Titel, Empfänger,
 Anschrift, Zielzahl (300) und Text stehen in
